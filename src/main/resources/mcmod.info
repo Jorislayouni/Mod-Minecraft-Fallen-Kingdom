@@ -1,0 +1,16 @@
+[
+  {
+    "modid": "fallenkingdom",
+    "name": "Fallen Kingdom",
+    "description": "Mode de jeu Fallen Kingdom pour Minecraft 1.8.8. Phase de preparation en Creatif, puis PvP en Survie avec cœur de royaume a defendre.",
+    "version": "${version}",
+    "mcversion": "${mcversion}",
+    "url": "",
+    "updateUrl": "",
+    "authorList": ["Joris"],
+    "credits": "Inspired by Siphano's Fallen Kingdom series",
+    "logoFile": "",
+    "screenshots": [],
+    "dependencies": []
+  }
+]
