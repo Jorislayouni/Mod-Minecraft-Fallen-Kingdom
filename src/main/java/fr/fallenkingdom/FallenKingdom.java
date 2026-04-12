@@ -5,7 +5,6 @@ import fr.fallenkingdom.game.GameManager;
 import fr.fallenkingdom.handlers.BlockPlaceHandler;
 import fr.fallenkingdom.handlers.CoreBreakHandler;
 import fr.fallenkingdom.handlers.PlayerEventHandler;
-import fr.fallenkingdom.handlers.TickHandler;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.event.FMLInitializationEvent;
@@ -44,7 +43,6 @@ public class FallenKingdom {
         MinecraftForge.EVENT_BUS.register(new BlockPlaceHandler(gameManager));
         MinecraftForge.EVENT_BUS.register(new CoreBreakHandler(gameManager));
         MinecraftForge.EVENT_BUS.register(new PlayerEventHandler(gameManager));
-        MinecraftForge.EVENT_BUS.register(new TickHandler(gameManager));
     }
 
     @Mod.EventHandler

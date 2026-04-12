@@ -20,16 +20,17 @@ import java.util.List;
  * Commande unique {@code /fk} pour piloter une partie de Fallen Kingdom.
  *
  * <pre>
- * /fk start
- * /fk stop
+ * /fk start                                           → lance la prep (survie, PvP off)
+ * /fk game                                            → lance le combat (PvP on)
+ * /fk stop                                            → arrete la partie
  * /fk status
- * /fk setprep &lt;secondes&gt;
  * /fk team create &lt;nom&gt; &lt;couleur&gt; [vies]
  * /fk team add &lt;joueur&gt; &lt;equipe&gt;
  * /fk team remove &lt;joueur&gt;
+ * /fk team list
  * /fk setbase &lt;equipe&gt; &lt;x1&gt; &lt;y1&gt; &lt;z1&gt; &lt;x2&gt; &lt;y2&gt; &lt;z2&gt;
- * /fk setcore &lt;equipe&gt; [x y z]   (defaut : position du joueur)
- * /fk setspawn &lt;equipe&gt; [x y z]  (defaut : position du joueur)
+ * /fk setcore &lt;equipe&gt; [x y z]
+ * /fk setspawn &lt;equipe&gt; [x y z]
  * </pre>
  */
 public class CommandFK extends CommandBase {
@@ -47,7 +48,7 @@ public class CommandFK extends CommandBase {
 
     @Override
     public String getCommandUsage(ICommandSender sender) {
-        return "/fk <start|stop|status|setprep|team|setbase|setcore|setspawn>";
+        return "/fk <start|game|stop|status|team|setbase|setcore|setspawn>";
     }
 
     @Override
@@ -69,7 +70,18 @@ public class CommandFK extends CommandBase {
             if (err != null) {
                 sender.addChatMessage(new ChatComponentText(EnumChatFormatting.RED + err));
             } else {
-                sender.addChatMessage(new ChatComponentText(EnumChatFormatting.GREEN + "Partie demarree."));
+                sender.addChatMessage(new ChatComponentText(EnumChatFormatting.GREEN
+                    + "Phase de preparation demarree. Tapez /fk game pour lancer le combat."));
+            }
+            return;
+        }
+
+        if ("game".equals(sub)) {
+            String err = gm.startGamePhase(server);
+            if (err != null) {
+                sender.addChatMessage(new ChatComponentText(EnumChatFormatting.RED + err));
+            } else {
+                sender.addChatMessage(new ChatComponentText(EnumChatFormatting.GREEN + "Phase de jeu lancee !"));
             }
             return;
         }
@@ -81,21 +93,12 @@ public class CommandFK extends CommandBase {
 
         if ("status".equals(sub)) {
             sender.addChatMessage(new ChatComponentText(EnumChatFormatting.GOLD
-                + "Phase : " + gm.getPhase() + ", temps restant : " + gm.getRemainingSeconds() + "s"));
+                + "Phase : " + gm.getPhase()));
             for (FKTeam t : gm.getTeams().values()) {
                 sender.addChatMessage(new ChatComponentText(" - " + t.getColoredName()
                     + EnumChatFormatting.GRAY + " (" + t.getPlayers().size() + " joueurs, "
                     + (t.isEliminated() ? "eliminee" : "en vie") + ")"));
             }
-            return;
-        }
-
-        if ("setprep".equals(sub)) {
-            if (args.length < 2) throw new WrongUsageException("/fk setprep <secondes>");
-            int s = parseInt(args[1], 1, 60 * 60 * 24);
-            gm.setPreparationSeconds(s);
-            sender.addChatMessage(new ChatComponentText(EnumChatFormatting.GREEN
-                + "Duree de preparation : " + s + "s"));
             return;
         }
 
@@ -121,7 +124,7 @@ public class CommandFK extends CommandBase {
             BlockPos pos = readPosOrSender(sender, args, 2);
             t.setCorePos(pos);
             sender.addChatMessage(new ChatComponentText(EnumChatFormatting.GREEN
-                + "Cœur de " + t.getName() + " place en " + pos));
+                + "Coeur de " + t.getName() + " place en " + pos));
             return;
         }
 
@@ -157,7 +160,6 @@ public class CommandFK extends CommandBase {
             if (args.length < 4) throw new WrongUsageException("/fk team add <joueur> <equipe>");
             EntityPlayerMP p = getPlayer(sender, args[2]);
             FKTeam t = requireTeam(args[3]);
-            // Retirer le joueur d'une autre equipe eventuelle.
             FKTeam existing = gm.getTeamOfPlayer(p.getUniqueID());
             if (existing != null) existing.removePlayer(p.getUniqueID());
             t.addPlayer(p.getUniqueID());

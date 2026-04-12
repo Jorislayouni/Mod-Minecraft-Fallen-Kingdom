@@ -4,7 +4,6 @@ import fr.fallenkingdom.game.FKTeam;
 import fr.fallenkingdom.game.GameManager;
 import fr.fallenkingdom.game.GamePhase;
 import fr.fallenkingdom.util.ChatUtil;
-import fr.fallenkingdom.util.Kits;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.server.MinecraftServer;
@@ -21,10 +20,10 @@ import java.util.UUID;
 /**
  * Gere les evenements joueur :
  * <ul>
- *     <li>Desactive le PvP entre equipes pendant la phase de preparation.</li>
+ *     <li>Desactive le PvP pendant la phase de preparation.</li>
  *     <li>Empeche le friendly fire entre coequipiers.</li>
- *     <li>Decremente les vies a chaque mort, et bascule en spectateur quand a zero.</li>
- *     <li>Respawn automatique au spawn d'equipe avec un kit neuf.</li>
+ *     <li>Decremente les vies a chaque mort, puis mode spectateur.</li>
+ *     <li>Respawn au spawn d'equipe (pas de kit).</li>
  * </ul>
  */
 public class PlayerEventHandler {
@@ -40,9 +39,6 @@ public class PlayerEventHandler {
         if (!(event.entity instanceof EntityPlayer)) return;
         if (!(event.source.getEntity() instanceof EntityPlayer)) return;
 
-        EntityPlayer victim = (EntityPlayer) event.entity;
-        EntityPlayer attacker = (EntityPlayer) event.source.getEntity();
-
         GamePhase phase = gameManager.getPhase();
         if (phase == GamePhase.PREPARATION) {
             event.setCanceled(true);
@@ -51,6 +47,8 @@ public class PlayerEventHandler {
 
         if (phase != GamePhase.GAME) return;
 
+        EntityPlayer victim = (EntityPlayer) event.entity;
+        EntityPlayer attacker = (EntityPlayer) event.source.getEntity();
         FKTeam tv = gameManager.getTeamOfPlayer(victim.getUniqueID());
         FKTeam ta = gameManager.getTeamOfPlayer(attacker.getUniqueID());
         if (tv != null && ta != null && tv == ta) {
@@ -74,11 +72,8 @@ public class PlayerEventHandler {
         if (remaining <= 0) {
             ChatUtil.broadcast(server, EnumChatFormatting.GRAY + player.getName()
                 + " n'a plus de vies, il passe en spectateur.");
-            // 1.8.8 n'a pas SPECTATOR => on passe en ADVENTURE et on le teleporte loin.
-            // (Si vous utilisez 1.8.9+, remplacez par GameType.SPECTATOR.)
             player.setGameType(WorldSettings.GameType.ADVENTURE);
 
-            // Si plus aucun joueur vivant, on elimine l'equipe.
             if (allTeamPlayersOut(team)) {
                 team.setEliminated(true);
                 ChatUtil.broadcast(server, EnumChatFormatting.DARK_RED + "[Fallen Kingdom] "
@@ -109,8 +104,6 @@ public class PlayerEventHandler {
         if (sp != null) {
             player.setPositionAndUpdate(sp.getX() + 0.5, sp.getY(), sp.getZ() + 0.5);
         }
-        player.inventory.clear();
-        Kits.giveStarterKit(player, team.getColor());
     }
 
     private boolean allTeamPlayersOut(FKTeam team) {

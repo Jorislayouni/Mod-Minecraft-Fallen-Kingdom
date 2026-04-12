@@ -1,7 +1,6 @@
 package fr.fallenkingdom.game;
 
 import fr.fallenkingdom.util.ChatUtil;
-import fr.fallenkingdom.util.Kits;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.util.BlockPos;
@@ -14,42 +13,23 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Etat global d'une partie de Fallen Kingdom. Une seule instance pour tout
- * le serveur.
+ * Etat global d'une partie de Fallen Kingdom.
  *
- * Responsabilites :
+ * Deux phases de jeu :
  * <ul>
- *     <li>Gerer les equipes (creation, affectation des joueurs).</li>
- *     <li>Tenir le compte a rebours (prep puis jeu).</li>
- *     <li>Effectuer les transitions de phase (LOBBY -> PREPARATION -> GAME -> ENDED).</li>
- *     <li>Tracker les vies restantes par joueur.</li>
+ *     <li>{@code /fk start} → PREPARATION (survie, PvP off, construction dans la base).</li>
+ *     <li>{@code /fk game}  → GAME (survie, PvP on, objectif = detruire le coeur).</li>
  * </ul>
- *
- * Le decompte est exprime en ticks serveur (20 ticks / seconde).
+ * Pas de timer : l'admin decide quand passer d'une phase a l'autre.
  */
 public class GameManager {
-
-    /** Duree par defaut de la phase de preparation : 20 minutes. */
-    public static final int DEFAULT_PREPARATION_SECONDS = 20 * 60;
-
-    /** Duree par defaut max de la phase de jeu : 60 minutes (securite). */
-    public static final int DEFAULT_GAME_SECONDS = 60 * 60;
 
     private GamePhase phase = GamePhase.LOBBY;
 
     private final Map<String, FKTeam> teams = new LinkedHashMap<String, FKTeam>();
 
-    /** Ticks restants dans la phase courante (prep ou jeu). */
-    private int remainingTicks;
-
-    private int preparationSeconds = DEFAULT_PREPARATION_SECONDS;
-    private int gameSeconds = DEFAULT_GAME_SECONDS;
-
     /** Vies restantes par joueur (UUID -> vies). */
     private final Map<UUID, Integer> playerLives = new HashMap<UUID, Integer>();
-
-    /** Dernier entier de secondes annonce (pour n'envoyer qu'une annonce / sec). */
-    private int lastAnnouncedSecond = -1;
 
     // ------------------------------------------------------------------ teams
 
@@ -82,18 +62,10 @@ public class GameManager {
 
     public GamePhase getPhase() { return phase; }
 
-    public int getRemainingTicks() { return remainingTicks; }
-    public int getRemainingSeconds() { return remainingTicks / 20; }
-
-    public int getPreparationSeconds() { return preparationSeconds; }
-    public void setPreparationSeconds(int s) { this.preparationSeconds = s; }
-
-    public int getGameSeconds() { return gameSeconds; }
-    public void setGameSeconds(int s) { this.gameSeconds = s; }
-
     /**
-     * Demarre la partie : verifie que chaque equipe est prete, puis passe
-     * en phase {@link GamePhase#PREPARATION}.
+     * Demarre la phase de preparation : verifie que chaque equipe est prete,
+     * teleporte les joueurs au centre de leur base en mode survie.
+     * PvP desactive pendant cette phase.
      *
      * @return {@code null} si OK, sinon un message d'erreur.
      */
@@ -120,38 +92,39 @@ public class GameManager {
         }
 
         this.phase = GamePhase.PREPARATION;
-        this.remainingTicks = preparationSeconds * 20;
-        this.lastAnnouncedSecond = -1;
 
-        // Passage en creatif de tous les joueurs + teleport dans leur base.
+        // Teleport au centre de la base en survie.
         for (FKTeam t : teams.values()) {
             for (UUID u : t.getPlayers()) {
                 EntityPlayerMP p = getPlayerByUUID(server, u);
                 if (p == null) continue;
-                p.setGameType(WorldSettings.GameType.CREATIVE);
+                p.setGameType(WorldSettings.GameType.SURVIVAL);
                 BlockPos c = t.getBase() != null ? t.getBase().getCenter() : t.getSpawnPos();
                 if (c != null) {
                     p.setPositionAndUpdate(c.getX() + 0.5, c.getY() + 1, c.getZ() + 0.5);
                 }
-                ChatUtil.send(p, EnumChatFormatting.GOLD + "Phase de preparation demarree ! "
-                    + EnumChatFormatting.YELLOW + preparationSeconds / 60 + " minutes pour construire votre base.");
+                ChatUtil.send(p, EnumChatFormatting.GOLD + "Phase de preparation ! "
+                    + EnumChatFormatting.YELLOW + "Construisez votre base. L'admin lancera le combat avec /fk game.");
             }
         }
 
         ChatUtil.broadcast(server, EnumChatFormatting.GOLD + "[Fallen Kingdom] "
-            + EnumChatFormatting.YELLOW + "La partie commence ! Phase de preparation : "
-            + (preparationSeconds / 60) + " minutes.");
+            + EnumChatFormatting.YELLOW + "Phase de preparation demarree. Construisez vos bases !");
         return null;
     }
 
     /**
      * Transition PREPARATION -> GAME : teleportation de toutes les equipes
-     * devant leur base en survie, avec le kit de depart.
+     * devant leur spawn en survie (pas de kit, pas d'inventaire touche).
+     *
+     * @return {@code null} si OK, sinon un message d'erreur.
      */
-    public void startGamePhase(MinecraftServer server) {
+    public String startGamePhase(MinecraftServer server) {
+        if (phase != GamePhase.PREPARATION) {
+            return "Pas en phase de preparation (phase=" + phase + ").";
+        }
+
         this.phase = GamePhase.GAME;
-        this.remainingTicks = gameSeconds * 20;
-        this.lastAnnouncedSecond = -1;
 
         for (FKTeam t : teams.values()) {
             for (UUID u : t.getPlayers()) {
@@ -159,9 +132,6 @@ public class GameManager {
                 if (p == null) continue;
 
                 p.setGameType(WorldSettings.GameType.SURVIVAL);
-                p.inventory.clear();
-                Kits.giveStarterKit(p, t.getColor());
-
                 BlockPos sp = t.getSpawnPos();
                 if (sp != null) {
                     p.setPositionAndUpdate(sp.getX() + 0.5, sp.getY(), sp.getZ() + 0.5);
@@ -176,12 +146,12 @@ public class GameManager {
 
         ChatUtil.broadcast(server, EnumChatFormatting.RED + "[Fallen Kingdom] "
             + EnumChatFormatting.WHITE + "Fin de la preparation, que le combat commence !");
+        return null;
     }
 
     /** Annonce la fin de la partie et bascule en ENDED. */
     public void endGame(MinecraftServer server, FKTeam winner) {
         this.phase = GamePhase.ENDED;
-        this.remainingTicks = 0;
         if (winner != null) {
             ChatUtil.broadcast(server, EnumChatFormatting.GOLD + "[Fallen Kingdom] Victoire de l'equipe "
                 + winner.getColoredName() + EnumChatFormatting.GOLD + " !");
@@ -193,24 +163,7 @@ public class GameManager {
     /** Arret manuel de la partie par un admin. */
     public void stop(MinecraftServer server) {
         this.phase = GamePhase.LOBBY;
-        this.remainingTicks = 0;
         ChatUtil.broadcast(server, EnumChatFormatting.GRAY + "[Fallen Kingdom] Partie arretee par un admin.");
-    }
-
-    // ------------------------------------------------------------------ ticks
-
-    /** Decremente le timer d'un tick, renvoie true si la phase est finie. */
-    public boolean tickDown() {
-        if (phase != GamePhase.PREPARATION && phase != GamePhase.GAME) return false;
-        if (remainingTicks > 0) remainingTicks--;
-        return remainingTicks <= 0;
-    }
-
-    public boolean shouldAnnounceSecond() {
-        int sec = getRemainingSeconds();
-        if (sec == lastAnnouncedSecond) return false;
-        lastAnnouncedSecond = sec;
-        return true;
     }
 
     // ------------------------------------------------------------------ vies
@@ -227,9 +180,6 @@ public class GameManager {
     }
 
     /**
-     * Verifie si une equipe doit etre eliminee (cœur detruit et/ou plus de
-     * joueur en vie). Appele apres chaque mort / destruction de cœur.
-     *
      * @return l'equipe gagnante si une seule survit, null sinon.
      */
     public FKTeam checkVictory() {
