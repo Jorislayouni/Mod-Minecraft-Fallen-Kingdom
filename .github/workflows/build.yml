@@ -1,0 +1,67 @@
+name: Build Mod
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Forge 1.8.8 + ForgeGradle 1.2 require JDK 8 exactly.
+      - name: Set up JDK 8
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 8
+
+      # ForgeGradle 1.2 does not work with modern Gradle; pin to 2.14.
+      - name: Install Gradle 2.14
+        run: |
+          curl -sSL https://services.gradle.org/distributions/gradle-2.14-bin.zip -o gradle.zip
+          unzip -q gradle.zip
+          echo "$PWD/gradle-2.14/bin" >> "$GITHUB_PATH"
+
+      - name: Gradle version
+        run: gradle --version
+
+      # Downloads Forge sources, MCP mappings, etc. (slow on first run).
+      - name: Setup decompilation workspace
+        run: gradle setupDecompWorkspace --no-daemon --stacktrace
+
+      - name: Build
+        run: gradle build --no-daemon --stacktrace
+
+      - name: List artifacts
+        run: ls -lah build/libs/
+
+      - name: Upload mod jar
+        uses: actions/upload-artifact@v4
+        with:
+          name: FallenKingdomMod
+          path: build/libs/*.jar
+          if-no-files-found: error
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download built jar
+        uses: actions/download-artifact@v4
+        with:
+          name: FallenKingdomMod
+          path: dist
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.jar
